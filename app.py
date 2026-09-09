@@ -3,7 +3,8 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
+MODEL_VERSION = "model-1"
 
 
 class PredictRequest(BaseModel):
@@ -15,7 +16,8 @@ def health():
     return {
         "status": "healthy",
         "application": "student-ml-api",
-        "version": APP_VERSION,
+        "application_version": APP_VERSION,
+        "model_version": MODEL_VERSION,
     }
 
 
