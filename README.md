@@ -43,6 +43,28 @@ docker run -d --name student-ml-api -p 5000:5000 student-ml-api:1.0.0
 curl http://localhost:5000/health
 ```
 
+## Branch Protection Settings
+
+The `main` branch is protected with the following rules:
+
+| Setting | Value | Purpose |
+|---|---|---|
+| Require a pull request before merging | Enabled | Blocks direct pushes to `main`; all changes arrive via PR |
+| Required status check | `test-and-build` | A PR cannot merge unless CI passes |
+| Require branches up to date before merging | Enabled (`strict`) | The PR must be tested against the current `main`, not a stale base |
+| Allow force pushes | Disabled | Prevents history rewrites on `main` |
+| Allow deletions | Disabled | Prevents accidental deletion of `main` |
+| Require approvals | 0 | This is a solo-maintained coursework repository; requiring an approving review from another person would make merging impossible |
+| Enforce for administrators | Off | The repository owner retains an emergency escape hatch, the common default for a small repository |
+
+Together these enforce the assignment's core rule: **direct development on `main` is not permitted**, and only reviewed, CI-verified changes reach it.
+
+## Merge Strategy
+
+Pull requests into `main` are merged using **Squash and merge**.
+
+Rationale: it keeps `main`'s history to one commit per pull request, which makes the branch easy to scan, tag, and revert — a single revert undoes an entire feature cleanly. The granular commit history (including the deliberate CI-failure demonstration in PR #1) is preserved inside the pull request itself, so nothing is lost for review or grading purposes. A merge commit strategy would interleave every intermediate commit into `main`, and rebase-and-merge would lose the clear one-commit-per-change boundary that makes version tagging straightforward.
+
 ## CI vs. Release Workflow Separation
 
 The two workflows have deliberately separate responsibilities:
@@ -88,6 +110,36 @@ Total rebuild: ~44 seconds — the full dependency install re-ran.
 
 This is why the split ordering is preferable to `COPY . .` followed by `pip install`. With `COPY . .`, *any* source file change (including `app.py`, which never affects dependencies) invalidates the cache from that `COPY` onward, forcing a needless full reinstall on every single build. In CI, where builds run on every push, that difference compounds into significant wasted time.
 
+## Image Metadata and Tagging
+
+### OCI labels
+
+Every image built by `release.yml` carries OCI standard labels, populated from build arguments supplied by the workflow at build time:
+
+| Label | Source |
+|---|---|
+| `org.opencontainers.image.title` | Static — `student-ml-api` |
+| `org.opencontainers.image.version` | Derived from the git tag (`v1.0.0` → `1.0.0`) |
+| `org.opencontainers.image.revision` | `github.sha` — the exact commit that produced the image |
+| `org.opencontainers.image.source` | The repository URL |
+| `org.opencontainers.image.created` | Build timestamp (UTC) |
+
+This means any image pulled from the registry can be traced back to the precise commit that built it:
+
+```
+docker inspect ghcr.io/komail0/student-ml-api:1.0.0 --format '{{json .Config.Labels}}'
+```
+
+### Tags published per release
+
+Each release publishes the same image under three tags:
+
+- **`<version>`** (e.g. `1.0.0`) — the immutable semantic version, derived automatically from the git tag. The workflow never hard-codes a version number; it strips the leading `v` from `github.ref_name` at runtime.
+- **`latest`** — a moving pointer to the most recent release.
+- **`<short-sha>`** (e.g. `79e0252`) — the commit-specific tag.
+
+The commit-SHA tag is valuable because it is both immutable and unambiguous. `latest` moves with every release, so "the image running in production is `latest`" tells you nothing about what code is actually running. A version tag is stable but requires a lookup to map back to a commit. A commit-SHA tag answers "exactly which source produced this running container?" directly, which matters when debugging an incident or verifying that a deployed artifact matches a reviewed commit.
+
 ## Failure Analysis
 
 ### 1. Failed pytest
@@ -131,3 +183,11 @@ This is why the split ordering is preferable to `COPY . .` followed by `pip inst
 **CI passed** — after correcting the test:
 
 ![CI passed run](docs/screenshots/03-ci-passed.png)
+
+**Branch protection on `main`** — pull requests and a passing `test-and-build` check are required:
+
+![Branch protection settings](docs/screenshots/04-branch-protection.png)
+
+**PR #1 merged** — squash-merged into `main` after CI passed:
+
+![PR 1 merged](docs/screenshots/05-pr1-merged.png)
