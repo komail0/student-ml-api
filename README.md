@@ -225,3 +225,7 @@ Pulling a versioned image sidesteps all of this. The artifact was built once, te
 **GHCR registry after `v1.0.0`** — the image published with version, `latest`, and commit-SHA tags:
 
 ![GHCR showing 1.0.0](docs/screenshots/07-ghcr-v1.0.0.png)
+
+**PR #3 opened** — the `v1.1.0` model-metadata feature:
+
+![PR 3 opened](docs/screenshots/08-pr3-opened.png)
