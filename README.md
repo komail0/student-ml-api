@@ -143,6 +143,26 @@ Each release publishes the same image under three tags:
 
 The commit-SHA tag is valuable because it is both immutable and unambiguous. `latest` moves with every release, so "the image running in production is `latest`" tells you nothing about what code is actually running. A version tag is stable but requires a lookup to map back to a commit. A commit-SHA tag answers "exactly which source produced this running container?" directly, which matters when debugging an incident or verifying that a deployed artifact matches a reviewed commit.
 
+## Traceability (v1.1.0)
+
+Every released artifact can be traced back to the pull request that introduced it:
+
+| Stage | Value |
+|---|---|
+| Pull Request | [#3](https://github.com/komail0/student-ml-api/pull/3) |
+| Merge Commit | `1689fb98b6acac9333e9bbd8c1d9e45bb213f35c` |
+| Git Tag | `v1.1.0` |
+| Docker Image | `ghcr.io/komail0/student-ml-api:1.1.0` |
+| Commit-SHA Image Tag | `ghcr.io/komail0/student-ml-api:1689fb9` |
+| Image Digest | `sha256:9a51233fc16f19ae29f993ec11c01018eb82c842f9dc3c0269fc82a1e7b29c26` |
+
+The chain is self-verifying in both directions:
+
+- **Forward** — PR #3 merged as `1689fb9`, which was tagged `v1.1.0`, which triggered the release workflow, which published the image whose digest is recorded above.
+- **Backward** — given only a running container, `docker inspect` returns `org.opencontainers.image.revision = 1689fb98b6acac9333e9bbd8c1d9e45bb213f35c`, which identifies the exact commit, which is reachable from the `v1.1.0` tag and traceable to PR #3. The commit-SHA image tag `1689fb9` encodes the same answer in the tag itself.
+
+This is why a `latest`-only tagging scheme is insufficient for production: `latest` is reassigned on every release, so it identifies *when* something was pulled, not *what* is running. The digest and commit-SHA tag are immutable and answer that question unambiguously.
+
 ## Rollback Procedure
 
 If a release turns out to be faulty in production, rolling back to a known-good version requires **no source code change and no rebuild** — the previous version is already sitting in the registry as a finished artifact:
@@ -229,3 +249,11 @@ Pulling a versioned image sidesteps all of this. The artifact was built once, te
 **PR #3 opened** — the `v1.1.0` model-metadata feature:
 
 ![PR 3 opened](docs/screenshots/08-pr3-opened.png)
+
+**Release workflow succeeded for `v1.1.0`**:
+
+![v1.1.0 release run](docs/screenshots/09-release-v1.1.0.png)
+
+**GHCR registry after `v1.1.0`** — `1.0.0` and `1.1.0` both available, with `latest` now pointing at `1.1.0`:
+
+![GHCR showing both versions](docs/screenshots/10-ghcr-both-versions.png)
