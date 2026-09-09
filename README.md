@@ -7,15 +7,18 @@ feature branches → Pull Requests → GitHub Actions CI → Docker → GitHub C
 
 ### `GET /health`
 
-Returns service health and version information.
+Returns service health, application version, and model version.
 
 ```json
 {
   "status": "healthy",
   "application": "student-ml-api",
-  "version": "1.0.0"
+  "application_version": "1.1.0",
+  "model_version": "model-1"
 }
 ```
+
+The application version and model version are reported separately because in an MLOps system they change independently — a model can be retrained and redeployed without any application code change, and the application can be patched without touching the model. Reporting only one number would make it impossible to tell which of the two actually changed between two running instances.
 
 ### `POST /predict`
 
@@ -140,6 +143,29 @@ Each release publishes the same image under three tags:
 
 The commit-SHA tag is valuable because it is both immutable and unambiguous. `latest` moves with every release, so "the image running in production is `latest`" tells you nothing about what code is actually running. A version tag is stable but requires a lookup to map back to a commit. A commit-SHA tag answers "exactly which source produced this running container?" directly, which matters when debugging an incident or verifying that a deployed artifact matches a reviewed commit.
 
+## Rollback Procedure
+
+If a release turns out to be faulty in production, rolling back to a known-good version requires **no source code change and no rebuild** — the previous version is already sitting in the registry as a finished artifact:
+
+```
+docker stop student-ml-api && docker rm student-ml-api
+docker pull ghcr.io/komail0/student-ml-api:1.0.0
+docker run -d --name student-ml-api -p 5000:5000 ghcr.io/komail0/student-ml-api:1.0.0
+curl http://localhost:5000/health
+```
+
+The `/health` response confirms which version is actually running — `1.0.0` returns a `version` field, whereas `1.1.0` returns `application_version` and `model_version`, so the two are unambiguously distinguishable.
+
+### Why this beats a source-based deployment
+
+A rollback based on `git clone` → `pip install` → `python app.py` re-runs the *build* on the target machine, and a build is not deterministic in the way a container image is:
+
+- `pip install` re-resolves dependencies at rollback time. A transitive dependency that published a new release since the original deploy can be silently pulled in, so the "rolled back" application is not byte-for-byte what was originally tested.
+- The target machine's Python version, system libraries, and OS packages may differ from where the original release was built and validated.
+- It is slow and fallible at exactly the wrong moment — during an incident, under time pressure.
+
+Pulling a versioned image sidesteps all of this. The artifact was built once, tested once, and is now reproduced exactly, identified by an immutable digest. Rollback becomes a pull-and-run rather than a rebuild, which is the entire point of promoting artifacts rather than rebuilding them per environment.
+
 ## Failure Analysis
 
 ### 1. Failed pytest
@@ -191,3 +217,15 @@ The commit-SHA tag is valuable because it is both immutable and unambiguous. `la
 **PR #1 merged** — squash-merged into `main` after CI passed:
 
 ![PR 1 merged](docs/screenshots/05-pr1-merged.png)
+
+**Release workflow succeeded for `v1.0.0`** — triggered automatically by the tag push:
+
+![v1.0.0 release run](docs/screenshots/06-release-v1.0.0.png)
+
+**GHCR registry after `v1.0.0`** — the image published with version, `latest`, and commit-SHA tags:
+
+![GHCR showing 1.0.0](docs/screenshots/07-ghcr-v1.0.0.png)
+
+**PR #3 opened** — the `v1.1.0` model-metadata feature:
+
+![PR 3 opened](docs/screenshots/08-pr3-opened.png)
